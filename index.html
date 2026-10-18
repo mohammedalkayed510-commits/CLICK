@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Click Media</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eef1f5;--card:#fff;--ink:#17202b;--mute:#6b7685;--line:#dde2ea;--acc:#2557ff;--ok:#0e8a5f;--bad:#d2372f;--warn:#c47b00}
+*{box-sizing:border-box}
+body{margin:0;font-family:Tajawal,sans-serif;background:var(--bg);color:var(--ink);font-size:16px}
+[hidden]{display:none!important}
+header{background:var(--ink);color:#fff;padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+header b{font-size:20px;font-weight:800;letter-spacing:.2px}
+header span{color:#aeb8c6;font-size:14px;margin-inline-start:auto}
+header button{background:transparent;color:#fff;border:1px solid #4a5666;padding:6px 12px;border-radius:6px;font:inherit;cursor:pointer}
+nav{display:flex;gap:4px;padding:10px 12px 0;overflow-x:auto}
+nav button{border:0;background:transparent;padding:10px 14px;font:inherit;font-weight:500;color:var(--mute);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
+nav button.on{color:var(--acc);border-color:var(--acc);font-weight:700}
+main{max-width:960px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+h2{margin:0 0 12px;font-size:19px}h3{margin:16px 0 8px;font-size:16px}
+label{display:block;font-size:14px;color:var(--mute);margin:10px 0 4px}
+input,select,textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff;color:var(--ink)}
+input:focus,select:focus,button:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.btn{background:var(--acc);color:#fff;border:0;padding:11px 18px;border-radius:8px;font:inherit;font-weight:700;cursor:pointer;margin-top:12px}
+.btn.alt{background:#fff;color:var(--ink);border:1px solid var(--line)}
+.btn.sm{padding:6px 10px;margin:0;font-size:14px}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th,td{text-align:start;padding:9px 6px;border-bottom:1px solid var(--line)}
+th{color:var(--mute);font-weight:500;font-size:14px}
+.tw{overflow-x:auto}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:12px}
+.stat{background:var(--bg);border-radius:8px;padding:10px}.stat small{color:var(--mute);display:block}.stat b{font-size:20px}
+.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}
+.item{border:1px dashed var(--line);border-radius:8px;padding:10px;margin-bottom:8px}
+.err{color:var(--bad);margin-top:8px}
+#login{max-width:360px;margin:12vh auto;padding:0 16px}
+.empty{color:var(--mute);padding:12px 0}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <div class="card">
+    <h2>Click Media</h2>
+    <label>الإيميل</label><input id="em" type="email" autocomplete="username">
+    <label>كلمة السر</label><input id="pw" type="password" autocomplete="current-password">
+    <button class="btn" id="go" style="width:100%">دخول</button>
+    <div class="err" id="lerr"></div>
+  </div>
+</div>
+
+<div id="app" hidden>
+  <header><b>Click Media</b><span id="who"></span><button id="out">خروج</button></header>
+  <nav id="nav"></nav>
+  <main id="view"></main>
+</div>
+
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {getAuth,signInWithEmailAndPassword,onAuthStateChanged,signOut} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {getFirestore,collection,doc,getDoc,getDocs,addDoc,deleteDoc,query,orderBy} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+// الصق هنا إعدادات مشروع Firebase الخاص بك
+const cfg={apiKey:"YOUR_API_KEY",authDomain:"YOUR_PROJECT.firebaseapp.com",projectId:"YOUR_PROJECT",appId:"YOUR_APP_ID"};
+const app=initializeApp(cfg),auth=getAuth(app),db=getFirestore(app);
+
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const today=()=>new Date().toISOString().slice(0,10);
+const num=v=>Number(v)||0;
+const money=v=>num(v).toFixed(2);
+const addMonths=(d,m)=>{const x=new Date(d);x.setMonth(x.getMonth()+m);return x.toISOString().slice(0,10)};
+const daysLeft=end=>Math.ceil((new Date(end)-new Date(today()))/864e5);
+const MONTHS={1:"شهر",3:"3 شهور",6:"6 شهور",12:"سنة"};
+
+let me=null,tab="customers",sel=null,D={customers:[],services:[],invoices:[],payments:[]};
+
+async function load(){
+  for(const k of Object.keys(D)){
+    const s=await getDocs(query(collection(db,k),orderBy("createdAt","desc")));
+    D[k]=s.docs.map(d=>({id:d.id,...d.data()}));
+  }
+}
+const add=(k,o)=>addDoc(collection(db,k),{...o,createdAt:Date.now(),by:me.uid,byName:me.name});
+
+$("#go").onclick=async()=>{
+  $("#lerr").textContent="";
+  try{await signInWithEmailAndPassword(auth,$("#em").value.trim(),$("#pw").value)}
+  catch(e){$("#lerr").textContent="الإيميل أو كلمة السر غير صحيحة"}
+};
+$("#out").onclick=()=>signOut(auth);
+
+onAuthStateChanged(auth,async u=>{
+  if(!u){me=null;$("#login").hidden=false;$("#app").hidden=true;return}
+  const p=await getDoc(doc(db,"users",u.uid));
+  if(!p.exists()){$("#lerr").textContent="هذا الحساب غير مفعّل. اطلب من الأدمن تفعيله.";signOut(auth);return}
+  me={uid:u.uid,...p.data()};
+  $("#login").hidden=true;$("#app").hidden=false;
+  $("#who").textContent=me.name+(me.role==="admin"?" (أدمن)":"");
+  await load();render();
+});
+
+function balance(cid){
+  const inv=D.invoices.filter(i=>i.customerId===cid).reduce((s,i)=>s+num(i.total),0);
+  const pay=D.payments.filter(p=>p.customerId===cid).reduce((s,p)=>s+num(p.amount),0);
+  return {inv,pay,left:inv-pay};
+}
+function subsOf(cid){
+  const out=[];
+  D.invoices.filter(i=>i.customerId===cid).forEach(i=>(i.items||[]).forEach(it=>{if(it.months)out.push(it)}));
+  return out.sort((a,b)=>a.end<b.end?1:-1);
+}
+const dl=end=>{const d=daysLeft(end);return d<0?`<span class="bad">منتهي منذ ${-d} يوم</span>`:d<=7?`<span class="warn">باقي ${d} يوم</span>`:`<span class="ok">باقي ${d} يوم</span>`};
+
+function render(){
+  const tabs=[["customers","الزبائن"],["invoice","فاتورة جديدة"],["payment","تسجيل دفعة"]];
+  if(me.role==="admin")tabs.push(["services","الخدمات"]);
+  $("#nav").innerHTML=tabs.map(([k,t])=>`<button class="${tab===k?"on":""}" data-t="${k}">${t}</button>`).join("");
+  $("#nav").querySelectorAll("button").forEach(b=>b.onclick=()=>{tab=b.dataset.t;sel=null;render()});
+  ({customers:vCustomers,invoice:vInvoice,payment:vPayment,services:vServices})[tab]();
+}
+
+function vCustomers(){
+  if(sel)return vDetail();
+  const v=$("#view");
+  v.innerHTML=`<div class="card"><h2>إضافة زبون</h2><div class="row">
+    <div><label>الاسم</label><input id="cn"></div><div><label>الرقم</label><input id="cp" inputmode="tel"></div></div>
+    <button class="btn" id="cadd">حفظ الزبون</button></div>
+    <div class="card"><h2>الزبائن</h2><input id="q" placeholder="ابحث بالاسم أو الرقم"><div class="tw" id="cl"></div></div>`;
+  $("#cadd").onclick=async()=>{
+    const name=$("#cn").value.trim(),phone=$("#cp").value.trim();
+    if(!name||!phone)return alert("اكتب الاسم والرقم");
+    await add("customers",{name,phone});await load();render();
+  };
+  const draw=()=>{
+    const q=$("#q").value.trim();
+    const list=D.customers.filter(c=>!q||c.name.includes(q)||c.phone.includes(q));
+    $("#cl").innerHTML=list.length?`<table><tr><th>الزبون</th><th>الرقم</th><th>الباقي عليه</th></tr>`+
+      list.map(c=>{const b=balance(c.id);return `<tr><td><a href="#" data-c="${c.id}">${esc(c.name)}</a></td><td>${esc(c.phone)}</td><td class="${b.left>0?"bad":"ok"}">${money(b.left)}</td></tr>`}).join("")+`</table>`
+      :`<div class="empty">ما في زبائن بعد. أضف أول زبون من الأعلى.</div>`;
+    $("#cl").querySelectorAll("a").forEach(a=>a.onclick=e=>{e.preventDefault();sel=a.dataset.c;render()});
+  };
+  $("#q").oninput=draw;draw();
+}
+
+function vDetail(){
+  const c=D.customers.find(x=>x.id===sel),b=balance(sel),subs=subsOf(sel);
+  const invs=D.invoices.filter(i=>i.customerId===sel),pays=D.payments.filter(p=>p.customerId===sel);
+  $("#view").innerHTML=`<button class="btn alt sm" id="back">رجوع</button>
+  <div class="card" style="margin-top:12px"><h2>${esc(c.name)} <small style="color:var(--mute);font-weight:400">${esc(c.phone)}</small></h2>
+  <div class="stats"><div class="stat"><small>إجمالي الفواتير</small><b>${money(b.inv)}</b></div>
+  <div class="stat"><small>المدفوع</small><b class="ok">${money(b.pay)}</b></div>
+  <div class="stat"><small>الباقي</small><b class="${b.left>0?"bad":"ok"}">${money(b.left)}</b></div></div>
+  <h3>الاشتراكات</h3>${subs.length?`<div class="tw"><table><tr><th>الخدمة</th><th>المدة</th><th>البداية</th><th>الانتهاء</th><th>الحالة</th></tr>`+
+  subs.map(s=>`<tr><td>${esc(s.service)}</td><td>${MONTHS[s.months]||s.months+" شهر"}</td><td>${s.start}</td><td>${s.end}</td><td>${dl(s.end)}</td></tr>`).join("")+`</table></div>`:`<div class="empty">لا يوجد اشتراكات.</div>`}
+  <h3>الفواتير</h3>${invs.length?`<div class="tw"><table><tr><th>التاريخ</th><th>البنود</th><th>المجموع</th><th>الموظف</th></tr>`+
+  invs.map(i=>`<tr><td>${i.date}</td><td>${(i.items||[]).map(t=>esc(t.service)+" ("+money(t.price)+")").join("، ")}</td><td>${money(i.total)}</td><td>${esc(i.byName)}</td></tr>`).join("")+`</table></div>`:`<div class="empty">لا يوجد فواتير.</div>`}
+  <h3>الدفعات</h3>${pays.length?`<div class="tw"><table><tr><th>التاريخ</th><th>المبلغ</th><th>ملاحظة</th><th>استلمها</th></tr>`+
+  pays.map(p=>`<tr><td>${p.date}</td><td>${money(p.amount)}</td><td>${esc(p.note)}</td><td>${esc(p.byName)}</td></tr>`).join("")+`</table></div>`:`<div class="empty">لا يوجد دفعات.</div>`}
+  </div>`;
+  $("#back").onclick=()=>{sel=null;render()};
+}
+
+function custOptions(){return `<option value="">اختر الزبون</option>`+D.customers.map(c=>`<option value="${c.id}">${esc(c.name)} - ${esc(c.phone)}</option>`).join("")}
+
+function vInvoice(){
+  if(!D.services.length){$("#view").innerHTML=`<div class="card"><div class="empty">لا يوجد خدمات. ${me.role==="admin"?"أضفها من تبويب الخدمات.":"اطلب من الأدمن إضافتها."}</div></div>`;return}
+  $("#view").innerHTML=`<div class="card"><h2>فاتورة جديدة</h2>
+  <label>الزبون</label><select id="ic">${custOptions()}</select>
+  <div id="items"></div><button class="btn alt sm" id="addrow" style="margin-top:8px">+ إضافة بند</button>
+  <div class="row"><div><label>المدفوع الآن (اختياري)</label><input id="ipaid" type="number" min="0" step="0.01"></div>
+  <div><label>المجموع</label><input id="itot" readonly></div></div>
+  <button class="btn" id="isave">حفظ الفاتورة</button></div>`;
+  const row=()=>{
+    const d=document.createElement("div");d.className="item";
+    d.innerHTML=`<div class="row"><div><label>الخدمة</label><select class="s">${D.services.map(s=>`<option data-type="${s.type}">${esc(s.name)}</option>`).join("")}</select></div>
+    <div><label>السعر</label><input class="p" type="number" min="0" step="0.01"></div>
+    <div class="m"><label>المدة</label><select class="mo"><option value="1">شهر</option><option value="3">3 شهور</option><option value="6">6 شهور</option><option value="12">سنة</option></select></div>
+    <div><label>التاريخ</label><input class="dt" type="date" value="${today()}"></div></div>
+    <button class="btn alt sm rm" style="margin-top:8px">حذف البند</button>`;
+    const sync=()=>{d.querySelector(".m").hidden=d.querySelector(".s").selectedOptions[0].dataset.type!=="sub"};
+    d.querySelector(".s").onchange=sync;sync();
+    d.querySelector(".p").oninput=total;
+    d.querySelector(".rm").onclick=()=>{d.remove();total()};
+    $("#items").appendChild(d);
+  };
+  const total=()=>{$("#itot").value=money([...document.querySelectorAll(".p")].reduce((s,i)=>s+num(i.value),0))};
+  row();$("#addrow").onclick=row;
+  $("#isave").onclick=async()=>{
+    const cid=$("#ic").value;if(!cid)return alert("اختر الزبون");
+    const items=[...document.querySelectorAll(".item")].map(d=>{
+      const o=d.querySelector(".s").selectedOptions[0],sub=o.dataset.type==="sub",start=d.querySelector(".dt").value;
+      const it={service:o.value,price:num(d.querySelector(".p").value),date:start};
+      if(sub){it.months=num(d.querySelector(".mo").value);it.start=start;it.end=addMonths(start,it.months)}
+      return it;
+    });
+    if(!items.length)return alert("أضف بند واحد على الأقل");
+    const c=D.customers.find(x=>x.id===cid),totalv=items.reduce((s,i)=>s+i.price,0);
+    await add("invoices",{customerId:cid,customerName:c.name,items,total:totalv,date:today()});
+    const paid=num($("#ipaid").value);
+    if(paid>0)await add("payments",{customerId:cid,customerName:c.name,amount:paid,note:"دفعة مع الفاتورة",date:today()});
+    await load();sel=cid;tab="customers";render();
+  };
+}
+
+function vPayment(){
+  $("#view").innerHTML=`<div class="card"><h2>تسجيل دفعة من زبون</h2>
+  <label>الزبون</label><select id="pc">${custOptions()}</select>
+  <div id="pb" class="empty"></div>
+  <div class="row"><div><label>المبلغ</label><input id="pa" type="number" min="0" step="0.01"></div>
+  <div><label>التاريخ</label><input id="pd" type="date" value="${today()}"></div></div>
+  <label>ملاحظة</label><input id="pn">
+  <button class="btn" id="ps">حفظ الدفعة</button></div>`;
+  $("#pc").onchange=()=>{const id=$("#pc").value;$("#pb").textContent=id?"الباقي على الزبون: "+money(balance(id).left):""};
+  $("#ps").onclick=async()=>{
+    const cid=$("#pc").value,amt=num($("#pa").value);
+    if(!cid||amt<=0)return alert("اختر الزبون واكتب المبلغ");
+    const c=D.customers.find(x=>x.id===cid);
+    await add("payments",{customerId:cid,customerName:c.name,amount:amt,note:$("#pn").value.trim(),date:$("#pd").value});
+    await load();sel=cid;tab="customers";render();
+  };
+}
+
+function vServices(){
+  $("#view").innerHTML=`<div class="card"><h2>الخدمات</h2><div class="row">
+  <div><label>اسم الخدمة</label><input id="sn" placeholder="مثال: منيو QR"></div>
+  <div><label>النوع</label><select id="st"><option value="sub">اشتراك (له مدة)</option><option value="once">مرة وحدة</option></select></div></div>
+  <button class="btn" id="sa">إضافة</button>
+  <div class="tw" style="margin-top:12px">${D.services.length?`<table>`+D.services.map(s=>`<tr><td>${esc(s.name)}</td><td>${s.type==="sub"?"اشتراك":"مرة وحدة"}</td><td><button class="btn alt sm" data-d="${s.id}">حذف</button></td></tr>`).join("")+`</table>`:`<div class="empty">أضف أول خدمة.</div>`}</div></div>`;
+  $("#sa").onclick=async()=>{const name=$("#sn").value.trim();if(!name)return;await add("services",{name,type:$("#st").value});await load();render()};
+  $("#view").querySelectorAll("[data-d]").forEach(b=>b.onclick=async()=>{if(confirm("حذف الخدمة؟")){await deleteDoc(doc(db,"services",b.dataset.d));await load();render()}});
+}
+</script>
+</body>
+</html>
