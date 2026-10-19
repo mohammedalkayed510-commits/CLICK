@@ -89,7 +89,7 @@ const add=(k,o)=>addDoc(collection(db,k),{...o,createdAt:Date.now(),by:me.uid,by
 $("#go").onclick=async()=>{
   $("#lerr").textContent="";
   try{await signInWithEmailAndPassword(auth,$("#em").value.trim(),$("#pw").value)}
-  catch(e){$("#lerr").textContent="الإيميل أو كلمة السر غير صحيحة"}
+  catch(e){$("#lerr").textContent="تعذّر الدخول ("+(e.code||e.message)+")"}
 };
 $("#out").onclick=()=>signOut(auth);
 
